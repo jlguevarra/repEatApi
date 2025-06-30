@@ -24,7 +24,7 @@ if (empty($email) || empty($password)) {
 }
 
 // Check user by email
-$query = $conn->prepare("SELECT id, name, email, password FROM users WHERE email = ?");
+$query = $conn->prepare("SELECT id, name, email, password, is_onboarded FROM users WHERE email = ?");
 $query->bind_param("s", $email);
 $query->execute();
 $result = $query->get_result();
@@ -55,7 +55,8 @@ echo json_encode([
     "user" => [
         "id" => $user['id'],
         "name" => $user['name'],
-        "email" => $user['email']
+        "email" => $user['email'],
+        "is_onboarded" => (bool)$user['is_onboarded']
     ]
 ]);
 
