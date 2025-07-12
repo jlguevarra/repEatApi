@@ -16,8 +16,14 @@ $userQuery->execute();
 $userResult = $userQuery->get_result();
 $user = $userResult->fetch_assoc();
 
-// Get onboarding data
-$onboardingQuery = $conn->prepare("SELECT current_weight, target_weight, goal, preferred_sets, preferred_reps, has_injury, injury_details FROM onboarding_data WHERE user_id = ?");
+// Get onboarding data including diet & allergies
+$onboardingQuery = $conn->prepare("
+    SELECT 
+        current_weight, target_weight, goal, preferred_sets, preferred_reps, 
+        has_injury, injury_details, diet_preference, allergies
+    FROM onboarding_data 
+    WHERE user_id = ?
+");
 $onboardingQuery->bind_param("i", $user_id);
 $onboardingQuery->execute();
 $onboardingResult = $onboardingQuery->get_result();

@@ -1,5 +1,6 @@
 <?php
 header("Content-Type: application/json");
+require 'db_connection.php';
 
 // Decode JSON input
 $data = json_decode(file_get_contents("php://input"), true);
@@ -33,13 +34,6 @@ if ($hasInjury) {
         echo json_encode(['success' => false, 'message' => "Invalid injury details"]);
         exit;
     }
-}
-
-// Connect to database
-$conn = new mysqli("localhost", "root", "", "repeat_app");
-if ($conn->connect_error) {
-    echo json_encode(['success' => false, 'message' => "Database connection failed"]);
-    exit;
 }
 
 // Check if user exists and already onboarded
