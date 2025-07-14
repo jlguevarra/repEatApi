@@ -14,6 +14,7 @@ $current_weight = $conn->real_escape_string($data['current_weight'] ?? '');
 $target_weight = $conn->real_escape_string($data['target_weight'] ?? '');
 $has_injury = isset($data['has_injury']) ? intval($data['has_injury']) : 0;
 $injury_details = $conn->real_escape_string($data['injury_details'] ?? '');
+$goal = isset($data['goal']) ? $conn->real_escape_string(trim($data['goal'])) : '';
 
 $conn->begin_transaction();
 
@@ -28,18 +29,23 @@ try {
         // Update existing record
         $stmt = $conn->prepare("
             UPDATE onboarding_data 
-            SET current_weight = ?, target_weight = ?, has_injury = ?, injury_details = ?
+            SET current_weight = ?, 
+                target_weight = ?, 
+                has_injury = ?, 
+                injury_details = ?, 
+                goal = ?
             WHERE user_id = ?
         ");
-        $stmt->bind_param("ssisi", $current_weight, $target_weight, $has_injury, $injury_details, $user_id);
+        $stmt->bind_param("ssissi", $current_weight, $target_weight, $has_injury, $injury_details, $goal, $user_id);
         $stmt->execute();
     } else {
         // Insert if not exists
         $stmt = $conn->prepare("
-            INSERT INTO onboarding_data (user_id, current_weight, target_weight, has_injury, injury_details) 
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO onboarding_data 
+                (user_id, current_weight, target_weight, has_injury, injury_details, goal) 
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
-        $stmt->bind_param("issis", $user_id, $current_weight, $target_weight, $has_injury, $injury_details);
+        $stmt->bind_param("ississ", $user_id, $current_weight, $target_weight, $has_injury, $injury_details, $goal);
         $stmt->execute();
     }
 
@@ -48,7 +54,7 @@ try {
     echo json_encode(['success' => true, 'message' => 'Physical stats updated successfully.']);
 } catch (Exception $e) {
     $conn->rollback();
-    echo json_encode(['success' => false, 'message' => 'Update failed.']);
+    echo json_encode(['success' => false, 'message' => 'Update failed: ' . $e->getMessage()]);
 }
 
 $conn->close();
