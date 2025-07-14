@@ -16,11 +16,11 @@ $userQuery->execute();
 $userResult = $userQuery->get_result();
 $user = $userResult->fetch_assoc();
 
-// Get onboarding data including diet & allergies
+// Get onboarding data including diet & allergies & physical stats
 $onboardingQuery = $conn->prepare("
     SELECT 
-        current_weight, target_weight, goal, preferred_sets, preferred_reps, 
-        has_injury, injury_details, diet_preference, allergies
+        current_weight, target_weight, height, goal, preferred_sets, preferred_reps, 
+        has_injury, injury_details, diet_preference, allergies, body_type
     FROM onboarding_data 
     WHERE user_id = ?
 ");
