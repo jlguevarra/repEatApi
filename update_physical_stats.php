@@ -12,26 +12,30 @@ if (!isset($data['user_id'])) {
 $user_id = intval($data['user_id']);
 $current_weight = floatval($data['current_weight'] ?? 0);
 $target_weight = floatval($data['target_weight'] ?? 0);
-$height = floatval($data['height'] ?? 0); // height in inches
+$height = floatval($data['height'] ?? 0); // already in cm
 $has_injury = isset($data['has_injury']) ? intval($data['has_injury']) : 0;
-$injury_details = $conn->real_escape_string($data['injury_details'] ?? '');
+$injury_details = isset($data['injury_details']) ? $conn->real_escape_string(trim($data['injury_details'])) : '';
 $goal = isset($data['goal']) ? $conn->real_escape_string(trim($data['goal'])) : '';
+$body_type = isset($data['body_type']) ? $conn->real_escape_string(trim($data['body_type'])) : 'Unknown';
 
-$body_type = 'Unknown';
+// Ensure injury_details is empty if has_injury is 0
+if (!$has_injury) {
+    $injury_details = '';
+} elseif ($injury_details === '' || $injury_details === '0') {
+    // fallback if has_injury is 1 but injury_details was sent blank
+    $injury_details = 'Unspecified';
+}
 
-// Compute BMI and body_type if height and weight are valid
-if ($height > 0 && $current_weight > 0) {
-    $bmi = ($current_weight / ($height * $height)) * 703;
-    if ($bmi < 18.5) {
-        $body_type = 'Underweight';
-    } elseif ($bmi < 24.9) {
-        $body_type = 'Normal';
-    } elseif ($bmi < 29.9) {
-        $body_type = 'Overweight';
-    } else {
-        $body_type = 'Obese';
+// Automatically adjust goal based on weights
+$goal_lower = strtolower($goal);
+if (in_array($goal_lower, ['muscle gain', 'weight loss'])) {
+    if ($current_weight > $target_weight) {
+        $goal = 'Weight Loss';
+    } elseif ($current_weight < $target_weight) {
+        $goal = 'Muscle Gain';
     }
 }
+// (Endurance and General Fitness remain untouched)
 
 $conn->begin_transaction();
 
