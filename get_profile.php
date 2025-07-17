@@ -36,8 +36,8 @@ if ($user) {
     $onboarding = $onboardingResult->fetch_assoc();
 
     if ($onboarding) {
-        // Convert has_injury to boolean explicitly
-        $onboarding['has_injury'] = $onboarding['has_injury'] == 1 ? true : false;
+        // keep has_injury as '1' or '0' (string)
+        $onboarding['has_injury'] = (string) $onboarding['has_injury'];
 
         $response = [
             'success' => true,
@@ -54,7 +54,7 @@ if ($user) {
                 'goal' => '',
                 'preferred_sets' => '',
                 'preferred_reps' => '',
-                'has_injury' => false,
+                'has_injury' => '0',
                 'injury_details' => '',
                 'diet_preference' => '',
                 'allergies' => '',

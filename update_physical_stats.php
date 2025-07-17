@@ -14,16 +14,19 @@ $current_weight = floatval($data['current_weight'] ?? 0);
 $target_weight = floatval($data['target_weight'] ?? 0);
 $height = floatval($data['height'] ?? 0); // already in cm
 $has_injury = isset($data['has_injury']) ? intval($data['has_injury']) : 0;
-$injury_details = isset($data['injury_details']) ? $conn->real_escape_string(trim($data['injury_details'])) : '';
+$injury_details_raw = trim($data['injury_details'] ?? '');
+$injury_details = $conn->real_escape_string($injury_details_raw);
 $goal = isset($data['goal']) ? $conn->real_escape_string(trim($data['goal'])) : '';
 $body_type = isset($data['body_type']) ? $conn->real_escape_string(trim($data['body_type'])) : 'Unknown';
 
-// Ensure injury_details is empty if has_injury is 0
-if (!$has_injury) {
-    $injury_details = '';
-} elseif ($injury_details === '' || $injury_details === '0') {
-    // fallback if has_injury is 1 but injury_details was sent blank
-    $injury_details = 'Unspecified';
+// ✅ Fix: handle injury_details properly
+if ($has_injury) {
+    // if injury is ON but no valid detail, fallback
+    if ($injury_details === '' || strtolower($injury_details) === '0') {
+        $injury_details = 'Unspecified';
+    }
+} else {
+    $injury_details = ''; // injury OFF → clear details
 }
 
 // Automatically adjust goal based on weights
