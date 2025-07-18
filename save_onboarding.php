@@ -14,7 +14,7 @@ $required = [
 
 // Check for missing fields
 foreach ($required as $field) {
-    if (empty($data[$field])) {
+    if (!isset($data[$field]) || trim($data[$field]) === '') {
         echo json_encode(['success' => false, 'message' => "Missing field: $field"]);
         exit;
     }
@@ -25,15 +25,18 @@ $height         = trim($data['height'] ?? '');
 $dietPreference = trim($data['diet_preference'] ?? '');
 $allergies      = trim($data['allergies'] ?? '');
 
-// Injury validation
-$hasInjury     = !empty($data['has_injury']) ? 1 : 0;
-$injuryDetails = trim($data['injury_details'] ?? '');
+// Injury handling
+$hasInjury = !empty($data['has_injury']) ? 1 : 0;
 
+// Always default injury_details to "None" if no injury
 if ($hasInjury) {
+    $injuryDetails = trim($data['injury_details'] ?? '');
     if (!preg_match("/^[a-zA-Z\s]{3,}$/", $injuryDetails)) {
         echo json_encode(['success' => false, 'message' => "Invalid injury details"]);
         exit;
     }
+} else {
+    $injuryDetails = "None";
 }
 
 // Check if user exists and already onboarded
