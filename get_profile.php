@@ -9,17 +9,14 @@ if (!isset($_GET['user_id'])) {
 
 $user_id = intval($_GET['user_id']);
 
-// Get user data
+// Get user basic info
 $userQuery = $conn->prepare("SELECT name FROM users WHERE id = ?");
 $userQuery->bind_param("i", $user_id);
 $userQuery->execute();
 $userResult = $userQuery->get_result();
 $user = $userResult->fetch_assoc();
 
-$response = [
-    'success' => false,
-    'message' => 'Profile data not found.'
-];
+$response = ['success' => false, 'message' => 'Profile data not found.'];
 
 if ($user) {
     // Get onboarding data
@@ -36,15 +33,23 @@ if ($user) {
     $onboarding = $onboardingResult->fetch_assoc();
 
     if ($onboarding) {
-        // keep has_injury as '1' or '0' (string)
-        $onboarding['has_injury'] = (string) $onboarding['has_injury'];
+        // Convert has_injury to string '0' or '1'
+        $onboarding['has_injury'] = $onboarding['has_injury'] ? '1' : '0';
+        
+        // Handle injury details
+        if ($onboarding['has_injury'] === '0') {
+            $onboarding['injury_details'] = 'None';
+        } elseif (empty($onboarding['injury_details']) || $onboarding['injury_details'] === 'None') {
+            $onboarding['injury_details'] = 'Knee Pain';
+            $onboarding['has_injury'] = '1';
+        }
 
         $response = [
             'success' => true,
             'data' => array_merge($user, $onboarding)
         ];
     } else {
-        // User exists but onboarding data not found → return defaults
+        // Default empty data
         $response = [
             'success' => true,
             'data' => array_merge($user, [
@@ -55,7 +60,7 @@ if ($user) {
                 'preferred_sets' => '',
                 'preferred_reps' => '',
                 'has_injury' => '0',
-                'injury_details' => '',
+                'injury_details' => 'None',
                 'diet_preference' => '',
                 'allergies' => '',
                 'body_type' => ''
@@ -65,6 +70,5 @@ if ($user) {
 }
 
 echo json_encode($response);
-
 $conn->close();
 ?>
