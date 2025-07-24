@@ -7,53 +7,26 @@ include 'db_connection.php';
 
 $data = json_decode(file_get_contents("php://input"), true);
 
-if (isset($data['workout_id']) && isset($data['note'])) {
-    $workout_id = $data['workout_id'];
+if (isset($data['user_id'], $data['date'], $data['note'])) {
+    $user_id = $data['user_id'];
+    $date = $data['date'];
     $note = $data['note'];
 
-    // First check if the workout exists
-    $check_sql = "SELECT workout_id FROM workouts WHERE workout_id = ?";
-    $check_stmt = $conn->prepare($check_sql);
-    $check_stmt->bind_param("i", $workout_id);
-    $check_stmt->execute();
-    $check_result = $check_stmt->get_result();
-    
-    if ($check_result->num_rows == 0) {
-        echo json_encode([
-            "success" => false, 
-            "message" => "Workout not found"
-        ]);
-        exit();
-    }
-
-    // Update only the note field
-    $sql = "UPDATE workouts SET note = ? WHERE workout_id = ?";
+    $sql = "INSERT INTO workouts (user_id, date, note) VALUES (?, ?, ?)";
     $stmt = $conn->prepare($sql);
 
     if ($stmt) {
-        $stmt->bind_param("si", $note, $workout_id);
+        $stmt->bind_param("iss", $user_id, $date, $note);
         if ($stmt->execute()) {
-            echo json_encode([
-                "success" => true, 
-                "message" => "Note saved successfully."
-            ]);
+            echo json_encode(["success" => true, "message" => "Note saved successfully."]);
         } else {
-            echo json_encode([
-                "success" => false, 
-                "message" => "Failed to save note: " . $stmt->error
-            ]);
+            echo json_encode(["success" => false, "message" => "Failed to save note: " . $stmt->error]);
         }
     } else {
-        echo json_encode([
-            "success" => false, 
-            "message" => "Failed to prepare statement: " . $conn->error
-        ]);
+        echo json_encode(["success" => false, "message" => "Failed to prepare statement: " . $conn->error]);
     }
 } else {
-    echo json_encode([
-        "success" => false, 
-        "message" => "Missing required fields: workout_id and note are required"
-    ]);
+    echo json_encode(["success" => false, "message" => "Missing required fields: user_id, date, and note are required."]);
 }
 
 $conn->close();
