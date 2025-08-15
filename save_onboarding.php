@@ -1,101 +1,245 @@
 <?php
 header("Content-Type: application/json");
-require 'db_connection.php';
+require 'db_connection.php'; // Ensure this path is correct
 
 // Decode JSON input
-$data = json_decode(file_get_contents("php://input"), true);
+$inputJSON = file_get_contents('php://input');
+$data = json_decode($inputJSON, true);
+
+// Log incoming data for debugging (Optional, remove in production)
+// error_log("Received data: " . print_r($data, true));
 
 // Required fields for validation
+// Updated list based on Flutter app data structure
 $required = [
-    'user_id', 'gender', 'birthdate', 'body_type',
-    'current_weight', 'target_weight', 'goal',
-    'preferred_sets', 'preferred_reps'
+    'user_id', 'gender', 'birthdate', 'height', 'body_type',
+    'current_weight', 'target_weight', 'goal', // Removed preferred_sets, preferred_reps
+    'has_injury', 'injury_details', 'diet_preference', 'allergies' // Added new fields
 ];
 
 // Check for missing fields
 foreach ($required as $field) {
-    if (!isset($data[$field]) || trim($data[$field]) === '') {
-        echo json_encode(['success' => false, 'message' => "Missing field: $field"]);
+    if (!isset($data[$field]) || (is_string($data[$field]) && trim($data[$field]) === '')) {
+        // Special handling for boolean fields or fields that might legitimately be "0"
+        if (($field === 'has_injury' || $field === 'injury_details' || $field === 'height') && isset($data[$field])) {
+            continue; // Allow empty string or "0" for these fields if they are set
+        }
+        echo json_encode(['success' => false, 'message' => "Missing required field: $field"]);
         exit;
     }
 }
 
-// Optional fields
-$height         = trim($data['height'] ?? '');
-$dietPreference = trim($data['diet_preference'] ?? '');
-$allergies      = trim($data['allergies'] ?? '');
+// Sanitize and prepare data
+$user_id = intval($data['user_id']); // Ensure it's an integer
+$gender = trim($data['gender']);
+$birthdate = trim($data['birthdate']);
+$height = trim($data['height']); // Can be empty string
+$body_type = trim($data['body_type']);
+$current_weight = floatval($data['current_weight']); // Ensure it's a float
+$target_weight = floatval($data['target_weight']);   // Ensure it's a float
+$goal = trim($data['goal']);
 
-// Injury handling
-$hasInjury = !empty($data['has_injury']) ? 1 : 0;
+// Handle injury information
+$has_injury = filter_var($data['has_injury'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0; // Convert to 1 or 0
+$injury_details = trim($data['injury_details']);
 
-// Always default injury_details to "None" if no injury
-if ($hasInjury) {
-    $injuryDetails = trim($data['injury_details'] ?? '');
-    if (!preg_match("/^[a-zA-Z\s]{3,}$/", $injuryDetails)) {
-        echo json_encode(['success' => false, 'message' => "Invalid injury details"]);
+// Handle new dietary information
+$diet_preference = trim($data['diet_preference']);
+$allergies_raw = trim($data['allergies']); // This is now a comma-separated string or "None"
+
+// Validate basic data types and formats
+if (!in_array($gender, ['Male', 'Female', 'Other'])) {
+    echo json_encode(['success' => false, 'message' => 'Invalid gender']);
+    exit;
+}
+
+if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $birthdate)) {
+    echo json_encode(['success' => false, 'message' => 'Invalid birthdate format']);
+    exit;
+}
+
+// Validate weights
+if ($current_weight <= 0 || $target_weight <= 0) {
+    echo json_encode(['success' => false, 'message' => 'Weights must be positive numbers']);
+    exit;
+}
+
+// Validate goal
+$valid_goals = ['Muscle Gain', 'Weight Loss', 'Endurance', 'General Fitness'];
+if (!in_array($goal, $valid_goals)) {
+    echo json_encode(['success' => false, 'message' => 'Invalid goal']);
+    exit;
+}
+
+// Validate injury details if injury is reported
+if ($has_injury) {
+    if (empty($injury_details) || $injury_details === 'None') {
+        echo json_encode(['success' => false, 'message' => 'Injury details required if injury is reported']);
+        exit;
+    }
+    // Example validation for injury details (adjust regex as needed)
+    if (!preg_match("/^[a-zA-Z\s]{3,}$/", $injury_details)) {
+        echo json_encode(['success' => false, 'message' => 'Invalid injury details format']);
         exit;
     }
 } else {
-    $injuryDetails = "None";
+    $injury_details = 'None'; // Explicitly set to 'None' if no injury
 }
 
-// Check if user exists and already onboarded
-$check = $conn->prepare("SELECT is_onboarded FROM users WHERE id = ?");
-$check->bind_param("i", $data['user_id']);
-$check->execute();
-$result = $check->get_result();
-$user = $result->fetch_assoc();
-$check->close();
+// Validate diet preference
+$valid_diets = ['None', 'High Protein', 'Low Carb', 'Low Fat', 'Low Sodium', 'Dairy Free', 'Vegetarian', 'Vegan', 'Keto', 'Paleo', 'Mediterranean', 'Low-Carb', 'High-Protein'];
+if (!in_array($diet_preference, $valid_diets)) {
+    echo json_encode(['success' => false, 'message' => 'Invalid diet preference']);
+    exit;
+}
+
+// Process allergies
+// The Flutter app sends a comma-separated string like "Milk,Eggs" or "None"
+$processed_allergies = '';
+if (empty($allergies_raw) || $allergies_raw === 'None') {
+    $processed_allergies = 'None';
+} else {
+    // Split the comma-separated string and sanitize each allergy
+    $allergy_list = array_map('trim', explode(',', $allergies_raw));
+    $valid_allergies = ['None', 'Peanuts', 'Tree Nuts', 'Shellfish', 'Fish', 'Milk', 'Eggs', 'Wheat', 'Soy', 'Gluten'];
+
+    // Filter out invalid allergies and ensure uniqueness
+    $unique_allergies = array_unique(array_filter($allergy_list, function($allergy) use ($valid_allergies) {
+        return in_array($allergy, $valid_allergies);
+    }));
+
+    if (empty($unique_allergies)) {
+        $processed_allergies = 'None';
+    } else {
+        // If "None" was somehow mixed in (shouldn't happen with current Flutter logic), remove it
+        $unique_allergies = array_diff($unique_allergies, ['None']);
+        if (empty($unique_allergies)) {
+             $processed_allergies = 'None';
+        } else {
+             $processed_allergies = implode(', ', $unique_allergies);
+        }
+    }
+}
+
+// --- Determine preferred_sets and preferred_reps ---
+// Since these are no longer sent from this step, we need to determine them.
+// You might have specific logic for this based on goal, user input from another step, or default values.
+// For now, let's use default values. You should replace this logic as needed.
+$preferred_sets = 3; // Default value
+$preferred_reps = 12; // Default value
+
+// Example logic based on goal (replace with your actual logic):
+/*
+if ($goal === 'Muscle Gain') {
+    $preferred_sets = 4;
+    $preferred_reps = 8;
+} elseif ($goal === 'Weight Loss') {
+    $preferred_sets = 3;
+    $preferred_reps = 15;
+} elseif ($goal === 'Endurance') {
+    $preferred_sets = 2;
+    $preferred_reps = 20;
+} else { // General Fitness
+    $preferred_sets = 3;
+    $preferred_reps = 12;
+}
+*/
+
+// --- End determination of preferred_sets and preferred_reps ---
+
+// Check if user exists and hasn't been onboarded yet
+$check_stmt = $conn->prepare("SELECT is_onboarded FROM users WHERE id = ?");
+if (!$check_stmt) {
+    echo json_encode(['success' => false, 'message' => 'Database prepare failed (check): ' . $conn->error]);
+    exit;
+}
+$check_stmt->bind_param("i", $user_id);
+$check_stmt->execute();
+$check_result = $check_stmt->get_result();
+$user = $check_result->fetch_assoc();
+$check_stmt->close();
 
 if (!$user) {
-    echo json_encode(['success' => false, 'message' => "User not found"]);
+    echo json_encode(['success' => false, 'message' => 'User not found']);
     exit;
 }
 
 if ((int)$user['is_onboarded'] === 1) {
-    echo json_encode(['success' => false, 'message' => "User already onboarded"]);
+    echo json_encode(['success' => false, 'message' => 'User already onboarded']);
     exit;
 }
 
-// Insert onboarding data
-$stmt = $conn->prepare("
-    INSERT INTO onboarding_data (
-        user_id, gender, birthdate, body_type, current_weight,
-        target_weight, height, goal, preferred_sets, preferred_reps,
-        has_injury, injury_details, diet_preference, allergies
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-");
+// Begin transaction for data consistency
+$conn->begin_transaction();
 
-$stmt->bind_param(
-    "issssssssissss",
-    $data['user_id'],
-    $data['gender'],
-    $data['birthdate'],
-    $data['body_type'],
-    $data['current_weight'],
-    $data['target_weight'],
-    $height,
-    $data['goal'],
-    $data['preferred_sets'],
-    $data['preferred_reps'],
-    $hasInjury,
-    $injuryDetails,
-    $dietPreference,
-    $allergies
-);
+try {
+    // Insert onboarding data into onboarding_data table
+    $insert_stmt = $conn->prepare("
+        INSERT INTO onboarding_data (
+            user_id, gender, birthdate, body_type, current_weight,
+            target_weight, height, goal, preferred_sets, preferred_reps,
+            has_injury, injury_details, diet_preference, allergies
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ");
 
-if ($stmt->execute()) {
-    // Mark user as onboarded
-    $update = $conn->prepare("UPDATE users SET is_onboarded = 1 WHERE id = ?");
-    $update->bind_param("i", $data['user_id']);
-    $update->execute();
-    $update->close();
+    if (!$insert_stmt) {
+        throw new Exception('Database prepare failed (insert): ' . $conn->error);
+    }
 
-    echo json_encode(['success' => true]);
-} else {
-    echo json_encode(['success' => false, 'message' => 'Failed to save onboarding data']);
+    $insert_stmt->bind_param(
+        "issssssssiisss", // Updated type string: i=int, s=string, d=float
+        $user_id,
+        $gender,
+        $birthdate,
+        $body_type,
+        $current_weight,
+        $target_weight,
+        $height, // s for string (can be empty)
+        $goal,
+        $preferred_sets, // i for integer
+        $preferred_reps, // i for integer
+        $has_injury, // i for integer (0 or 1)
+        $injury_details,
+        $diet_preference,
+        $processed_allergies
+    );
+
+    if (!$insert_stmt->execute()) {
+        throw new Exception('Failed to insert onboarding data: ' . $insert_stmt->error);
+    }
+    $insert_stmt->close();
+
+    // Mark user as onboarded in users table
+    $update_stmt = $conn->prepare("UPDATE users SET is_onboarded = 1 WHERE id = ?");
+    if (!$update_stmt) {
+        throw new Exception('Database prepare failed (update): ' . $conn->error);
+    }
+    $update_stmt->bind_param("i", $user_id);
+
+    if (!$update_stmt->execute()) {
+        throw new Exception('Failed to update user onboarding status: ' . $update_stmt->error);
+    }
+    $update_stmt->close();
+
+    // If everything is successful, commit the transaction
+    $conn->commit();
+
+    echo json_encode([
+        'success' => true,
+        'message' => 'Onboarding data saved successfully'
+    ]);
+
+} catch (Exception $e) {
+    // If an error occurs, rollback the transaction
+    $conn->rollback();
+    // Log the error message for debugging
+    error_log("Onboarding Error: " . $e->getMessage());
+    echo json_encode([
+        'success' => false,
+        'message' => 'Failed to save onboarding data: ' . $e->getMessage()
+    ]);
 }
 
-$stmt->close();
+// Close the database connection
 $conn->close();
 ?>
