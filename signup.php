@@ -26,6 +26,13 @@ if ($stmt->num_rows > 0) {
 }
 
 $code = rand(100000, 999999);
+
+// Delete any existing verification codes for this email to invalidate old ones
+$delete = $conn->prepare("DELETE FROM email_verifications WHERE email = ?");
+$delete->bind_param("s", $email);
+$delete->execute();
+
+// Insert new verification code
 $insert = $conn->prepare("INSERT INTO email_verifications (email, code) VALUES (?, ?)");
 $insert->bind_param("ss", $email, $code);
 $insert->execute();

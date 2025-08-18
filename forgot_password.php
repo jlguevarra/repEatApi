@@ -28,7 +28,12 @@ if ($check->num_rows === 0) {
 // Generate code
 $code = rand(100000, 999999);
 
-// Store code
+// Delete any existing reset codes for this email to invalidate old ones
+$delete = $conn->prepare("DELETE FROM password_resets WHERE email = ?");
+$delete->bind_param("s", $email);
+$delete->execute();
+
+// Store new code
 $stmt = $conn->prepare("INSERT INTO password_resets (email, code) VALUES (?, ?)");
 $stmt->bind_param("ss", $email, $code);
 $stmt->execute();
