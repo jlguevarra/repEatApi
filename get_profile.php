@@ -22,7 +22,7 @@ if ($user) {
     // Get onboarding data
     $onboardingQuery = $conn->prepare("
         SELECT 
-            current_weight, target_weight, height, goal, preferred_sets, preferred_reps, 
+            current_weight, target_weight, height, goal, 
             has_injury, injury_details, diet_preference, allergies, body_type
         FROM onboarding_data 
         WHERE user_id = ?
@@ -57,8 +57,6 @@ if ($user) {
                 'target_weight' => '',
                 'height' => '',
                 'goal' => '',
-                'preferred_sets' => '',
-                'preferred_reps' => '',
                 'has_injury' => '0',
                 'injury_details' => 'None',
                 'diet_preference' => '',
@@ -71,4 +69,4 @@ if ($user) {
 
 echo json_encode($response);
 $conn->close();
-?>
+?> 

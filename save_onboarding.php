@@ -64,8 +64,8 @@ if ($current_weight <= 0 || $target_weight <= 0) {
     exit;
 }
 
-// Validate goal
-$valid_goals = ['Muscle Gain', 'Weight Loss', 'Endurance', 'General Fitness'];
+// Validate goal - Updated to only allow Muscle Gain and Weight Loss
+$valid_goals = ['Muscle Gain', 'Weight Loss'];
 if (!in_array($goal, $valid_goals)) {
     echo json_encode(['success' => false, 'message' => 'Invalid goal']);
     exit;
@@ -86,14 +86,20 @@ if ($has_injury) {
     $injury_details = 'None'; // Explicitly set to 'None' if no injury
 }
 
-// Validate diet preference
-$valid_diets = ['None', 'High Protein', 'Low Carb', 'Low Fat', 'Low Sodium', 'Dairy Free', 'Vegetarian', 'Vegan', 'Keto', 'Paleo', 'Mediterranean', 'Low-Carb', 'High-Protein'];
+// Validate diet preference - Updated diet options
+$valid_diets = [
+    "High Protein",
+    "Low Carb",
+    "Low Fat",
+    "Low Sodium",
+    "Dairy Free",
+];
 if (!in_array($diet_preference, $valid_diets)) {
     echo json_encode(['success' => false, 'message' => 'Invalid diet preference']);
     exit;
 }
 
-// Process allergies
+// Process allergies - Updated allergy options
 // The Flutter app sends a comma-separated string like "Milk,Eggs" or "None"
 $processed_allergies = '';
 if (empty($allergies_raw) || $allergies_raw === 'None') {
@@ -101,7 +107,17 @@ if (empty($allergies_raw) || $allergies_raw === 'None') {
 } else {
     // Split the comma-separated string and sanitize each allergy
     $allergy_list = array_map('trim', explode(',', $allergies_raw));
-    $valid_allergies = ['None', 'Peanuts', 'Tree Nuts', 'Shellfish', 'Fish', 'Milk', 'Eggs', 'Wheat', 'Soy', 'Gluten'];
+    $valid_allergies = [
+        "None", // Explicit "None" option
+        "Peanuts",
+        "Tree Nuts",
+        "Milk", // This will be locked/auto-managed if Dairy Free is selected
+        "Eggs",
+        "Wheat",
+        "Soy",
+        "Fish",
+        "Shellfish",
+    ];
 
     // Filter out invalid allergies and ensure uniqueness
     $unique_allergies = array_unique(array_filter($allergy_list, function($allergy) use ($valid_allergies) {
@@ -120,32 +136,6 @@ if (empty($allergies_raw) || $allergies_raw === 'None') {
         }
     }
 }
-
-// --- Determine preferred_sets and preferred_reps ---
-// Since these are no longer sent from this step, we need to determine them.
-// You might have specific logic for this based on goal, user input from another step, or default values.
-// For now, let's use default values. You should replace this logic as needed.
-$preferred_sets = 3; // Default value
-$preferred_reps = 12; // Default value
-
-// Example logic based on goal (replace with your actual logic):
-/*
-if ($goal === 'Muscle Gain') {
-    $preferred_sets = 4;
-    $preferred_reps = 8;
-} elseif ($goal === 'Weight Loss') {
-    $preferred_sets = 3;
-    $preferred_reps = 15;
-} elseif ($goal === 'Endurance') {
-    $preferred_sets = 2;
-    $preferred_reps = 20;
-} else { // General Fitness
-    $preferred_sets = 3;
-    $preferred_reps = 12;
-}
-*/
-
-// --- End determination of preferred_sets and preferred_reps ---
 
 // Check if user exists and hasn't been onboarded yet
 $check_stmt = $conn->prepare("SELECT is_onboarded FROM users WHERE id = ?");
@@ -174,20 +164,22 @@ $conn->begin_transaction();
 
 try {
     // Insert onboarding data into onboarding_data table
+    // Removed preferred_sets and preferred_reps from the INSERT statement
     $insert_stmt = $conn->prepare("
         INSERT INTO onboarding_data (
             user_id, gender, birthdate, body_type, current_weight,
-            target_weight, height, goal, preferred_sets, preferred_reps,
+            target_weight, height, goal,
             has_injury, injury_details, diet_preference, allergies
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
 
     if (!$insert_stmt) {
         throw new Exception('Database prepare failed (insert): ' . $conn->error);
     }
 
+    // Updated bind_param to match the new column order (removed preferred_sets and preferred_reps)
     $insert_stmt->bind_param(
-        "issssssssiisss", // Updated type string: i=int, s=string, d=float
+        "isssssssiisss", // Updated type string: i=int, s=string, d=float
         $user_id,
         $gender,
         $birthdate,
@@ -196,8 +188,6 @@ try {
         $target_weight,
         $height, // s for string (can be empty)
         $goal,
-        $preferred_sets, // i for integer
-        $preferred_reps, // i for integer
         $has_injury, // i for integer (0 or 1)
         $injury_details,
         $diet_preference,
