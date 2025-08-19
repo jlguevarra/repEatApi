@@ -64,7 +64,7 @@ if ($current_weight <= 0 || $target_weight <= 0) {
     exit;
 }
 
-// Validate goal - Updated to only allow Muscle Gain and Weight Loss
+// Validate goal
 $valid_goals = ['Muscle Gain', 'Weight Loss'];
 if (!in_array($goal, $valid_goals)) {
     echo json_encode(['success' => false, 'message' => 'Invalid goal']);
@@ -86,20 +86,14 @@ if ($has_injury) {
     $injury_details = 'None'; // Explicitly set to 'None' if no injury
 }
 
-// Validate diet preference - Updated diet options
-$valid_diets = [
-    "High Protein",
-    "Low Carb",
-    "Low Fat",
-    "Low Sodium",
-    "Dairy Free",
-];
+// Validate diet preference
+$valid_diets = ['High Protein', 'Low Carb', 'Low Fat', 'Low Sodium', 'Dairy Free'];
 if (!in_array($diet_preference, $valid_diets)) {
     echo json_encode(['success' => false, 'message' => 'Invalid diet preference']);
     exit;
 }
 
-// Process allergies - Updated allergy options
+// Process allergies
 // The Flutter app sends a comma-separated string like "Milk,Eggs" or "None"
 $processed_allergies = '';
 if (empty($allergies_raw) || $allergies_raw === 'None') {
@@ -107,17 +101,7 @@ if (empty($allergies_raw) || $allergies_raw === 'None') {
 } else {
     // Split the comma-separated string and sanitize each allergy
     $allergy_list = array_map('trim', explode(',', $allergies_raw));
-    $valid_allergies = [
-        "None", // Explicit "None" option
-        "Peanuts",
-        "Tree Nuts",
-        "Milk", // This will be locked/auto-managed if Dairy Free is selected
-        "Eggs",
-        "Wheat",
-        "Soy",
-        "Fish",
-        "Shellfish",
-    ];
+    $valid_allergies = ['None', 'Peanuts', 'Tree Nuts', 'Milk', 'Eggs', 'Wheat', 'Soy', 'Fish', 'Shellfish'];
 
     // Filter out invalid allergies and ensure uniqueness
     $unique_allergies = array_unique(array_filter($allergy_list, function($allergy) use ($valid_allergies) {
@@ -136,6 +120,8 @@ if (empty($allergies_raw) || $allergies_raw === 'None') {
         }
     }
 }
+
+
 
 // Check if user exists and hasn't been onboarded yet
 $check_stmt = $conn->prepare("SELECT is_onboarded FROM users WHERE id = ?");
@@ -164,7 +150,6 @@ $conn->begin_transaction();
 
 try {
     // Insert onboarding data into onboarding_data table
-    // Removed preferred_sets and preferred_reps from the INSERT statement
     $insert_stmt = $conn->prepare("
         INSERT INTO onboarding_data (
             user_id, gender, birthdate, body_type, current_weight,
@@ -177,9 +162,8 @@ try {
         throw new Exception('Database prepare failed (insert): ' . $conn->error);
     }
 
-    // Updated bind_param to match the new column order (removed preferred_sets and preferred_reps)
     $insert_stmt->bind_param(
-        "isssssssiisss", // Updated type string: i=int, s=string, d=float
+        "isssssssssss", // Updated type string: i=int, s=string, d=float
         $user_id,
         $gender,
         $birthdate,
