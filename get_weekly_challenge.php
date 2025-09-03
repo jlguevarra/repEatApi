@@ -4,18 +4,53 @@ header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET");
 header("Access-Control-Allow-Headers: Content-Type");
 
-// Accept user_id and goal
-$user_id = $_POST['user_id'] ?? $_GET['user_id'] ?? null;
-$goal = strtolower($_POST['goal'] ?? $_GET['goal'] ?? '');
+// Include database connection
+require_once 'db_connection.php';
 
-// Default to muscle gain if goal not specified but user_id is provided
-if (!$goal && $user_id) {
+// Accept user_id
+$user_id = $_POST['user_id'] ?? $_GET['user_id'] ?? null;
+
+if (!$user_id) {
+    echo json_encode(["success" => false, "message" => "Missing user_id"]);
+    exit;
+}
+
+// Function to get user's goal from database
+function getUserGoalFromDatabase($user_id, $conn) {
+    try {
+        $stmt = $conn->prepare("SELECT goal FROM onboarding_data WHERE user_id = ? LIMIT 1");
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        if ($result->num_rows > 0) {
+            $row = $result->fetch_assoc();
+            return strtolower(trim($row['goal']));
+        }
+        
+        return null;
+    } catch (Exception $e) {
+        error_log("Database error: " . $e->getMessage());
+        return null;
+    }
+}
+
+// Get user's goal from database
+$goal = getUserGoalFromDatabase($user_id, $conn);
+
+// Default to muscle gain if goal not found in database
+if (!$goal) {
     $goal = 'muscle gain';
 }
 
-if (!$user_id || !in_array($goal, ['muscle gain', 'weight loss'])) {
-    echo json_encode(["success" => false, "message" => "Missing or invalid user_id or goal"]);
-    exit;
+// Normalize goal names
+if (strpos($goal, 'muscle') !== false || strpos($goal, 'gain') !== false || strpos($goal, 'build') !== false) {
+    $goal = 'muscle gain';
+} elseif (strpos($goal, 'weight') !== false || strpos($goal, 'loss') !== false || strpos($goal, 'lose') !== false || strpos($goal, 'fat') !== false) {
+    $goal = 'weight loss';
+} else {
+    // Default fallback
+    $goal = 'muscle gain';
 }
 
 // Function to fetch exercises by equipment
@@ -186,7 +221,9 @@ $response = [
     "daily_exercises" => $dailyExercises, // New format with exercises per day
     "sets" => $sets,
     "reps" => $reps,
-    "goal" => $goal
+    "goal" => $goal,
+    "user_id" => $user_id
 ];
 
 echo json_encode($response);
+?>
