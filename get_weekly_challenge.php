@@ -15,40 +15,6 @@ if (!$user_id) {
     exit;
 }
 
-// Check if user already has a saved plan in weekly_plans table
-$check_sql = "SELECT plan, sets, reps, goal FROM weekly_plans WHERE user_id = ? ORDER BY created_at DESC LIMIT 1";
-$check_stmt = $conn->prepare($check_sql);
-$check_stmt->bind_param("i", $user_id);
-$check_stmt->execute();
-$check_result = $check_stmt->get_result();
-
-if ($check_result->num_rows > 0) {
-    // User has a saved plan, return it
-    $row = $check_result->fetch_assoc();
-    
-    // Check if plan is valid JSON
-    $plan_data = json_decode($row['plan'], true);
-    if ($plan_data !== null) {
-        echo json_encode([
-            "success" => true,
-            "plan" => $plan_data,
-            "daily_exercises" => $plan_data,
-            "sets" => $row['sets'],
-            "reps" => $row['reps'],
-            "goal" => $row['goal'],
-            "user_id" => $user_id,
-            "from_saved" => true
-        ]);
-        
-        $check_stmt->close();
-        $conn->close();
-        exit;
-    }
-}
-
-$check_stmt->close();
-
-// If no saved plan found, generate a new one
 // Function to get user's goal from database
 function getUserGoalFromDatabase($user_id, $conn) {
     try {
@@ -151,9 +117,11 @@ function fetchExercisesByMuscle($muscle) {
 
 // Get exercises based on goal
 if ($goal === 'muscle gain') {
+    // For muscle gain: focus on major muscle groups with dumbbells
     $exercises = fetchExercisesByEquipment('dumbbell');
     
-    if (!$exercises || count($exercises) < 35) {
+    // If no dumbbell exercises, try by major muscle groups
+    if (!$exercises || count($exercises) < 35) { // Need 35 exercises for 7 days × 5 exercises
         $majorMuscles = ['chest', 'back', 'shoulders', 'quadriceps', 'biceps', 'triceps', 'abdominals'];
         $allExercises = [];
         
@@ -166,14 +134,17 @@ if ($goal === 'muscle gain') {
         $exercises = $allExercises;
     }
 } else {
+    // For weight loss: focus on compound movements and full body exercises
     $exercises = fetchExercisesByEquipment('body_only');
+    
+    // Also include some dumbbell exercises for variety
     $dumbbellExercises = fetchExercisesByEquipment('dumbbell');
     if ($dumbbellExercises) {
         $exercises = array_merge($exercises ?: [], $dumbbellExercises);
     }
 }
 
-// Fallback exercises
+// Fallback exercises if API fails
 $fallbackExercises = [
     ['name' => 'Push-ups', 'target' => 'Chest', 'equipment' => 'Body Only'],
     ['name' => 'Dumbbell Bench Press', 'target' => 'Chest', 'equipment' => 'Dumbbell'],
@@ -212,15 +183,16 @@ $fallbackExercises = [
     ['name' => 'Dumbbell Clean and Press', 'target' => 'Full Body', 'equipment' => 'Dumbbell']
 ];
 
+// Use fallback if API call failed or returned insufficient exercises
 if (!$exercises || count($exercises) < 35) {
     $exercises = $fallbackExercises;
 }
 
-// Shuffle and select 35 exercises
+// Shuffle and select 35 exercises (7 days × 5 exercises)
 shuffle($exercises);
 $selectedExercises = array_slice($exercises, 0, 35);
 
-// Set reps and sets
+// Set appropriate sets and reps based on goal
 $sets = $goal === 'muscle gain' ? 4 : 3;
 $reps = $goal === 'muscle gain' ? 8 : 15;
 
@@ -228,6 +200,7 @@ $days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Su
 $plan = [];
 $dailyExercises = [];
 
+// Group exercises by day (5 exercises per day)
 for ($i = 0; $i < 7; $i++) {
     $dayExercises = [];
     for ($j = 0; $j < 5; $j++) {
@@ -241,32 +214,16 @@ for ($i = 0; $i < 7; $i++) {
     $plan[$days[$i]] = implode(", ", $dayExercises);
 }
 
-// Save the generated plan to database directly
-$save_sql = "INSERT INTO weekly_plans (user_id, week_number, plan, sets, reps, goal) VALUES (?, ?, ?, ?, ?, ?)";
-$save_stmt = $conn->prepare($save_sql);
-$week_number = 1; // Set appropriate week number
-$save_stmt->bind_param("iisiss", $user_id, $week_number, json_encode($dailyExercises), $sets, $reps, $goal);
-
-if ($save_stmt->execute()) {
-    error_log("✅ Plan saved successfully for user: $user_id");
-} else {
-    error_log("❌ Error saving plan: " . $save_stmt->error);
-}
-
-$save_stmt->close();
-
-// Response
+// Prepare response
 $response = [
     "success" => true,
-    "plan" => $plan,
-    "daily_exercises" => $dailyExercises,
+    "plan" => $plan, // For backward compatibility
+    "daily_exercises" => $dailyExercises, // New format with exercises per day
     "sets" => $sets,
     "reps" => $reps,
     "goal" => $goal,
-    "user_id" => $user_id,
-    "from_saved" => false
+    "user_id" => $user_id
 ];
 
 echo json_encode($response);
-$conn->close();
 ?>
