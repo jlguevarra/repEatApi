@@ -1,6 +1,10 @@
 <?php
 header("Content-Type: application/json");
-include "db_connect.php";
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: POST, GET");
+header("Access-Control-Allow-Headers: Content-Type");
+
+include "db_connection.php";
 
 // Log the received data for debugging
 error_log("Received save request: " . print_r($_POST, true));
