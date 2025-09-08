@@ -145,27 +145,30 @@ try {
 
     // Generate 4-week (28-day) workout plan
     $weekly_plan = [];
-    $current_day = 1;
+    $workout_day_counter = 1; // Counter for workout days only (excluding rest days)
     $workout_types = ["push", "pull", "legs", "core"];
 
     for ($week = 1; $week <= 4; $week++) {
         $week_key = "Week $week";
         $weekly_plan[$week_key] = [];
         
-        for ($day = 1; $day <= 7; $day++) {
-            $day_name = date('l', strtotime("Sunday +$day days"));
-            
-            // Add rest days based on goal
-            if ($goal == "weight_loss" && ($day == 4 || $day == 7)) {
+        // Define all days of the week in correct order
+        $days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+        
+        foreach ($days_of_week as $day_name) {
+            // For weight loss: rest on Thursday and Sunday
+            if ($goal == "weight_loss" && ($day_name == "Thursday" || $day_name == "Sunday")) {
                 $weekly_plan[$week_key][$day_name] = ["Rest Day"];
                 continue;
-            } elseif ($goal == "muscle_gain" && $day == 4) {
+            } 
+            // For muscle gain: rest only on Thursday
+            elseif ($goal == "muscle_gain" && $day_name == "Thursday") {
                 $weekly_plan[$week_key][$day_name] = ["Rest Day"];
                 continue;
             }
             
-            // Select workout type in rotation
-            $workout_type = $workout_types[($current_day - 1) % 4];
+            // Select workout type in rotation (only count workout days)
+            $workout_type = $workout_types[($workout_day_counter - 1) % 4];
             
             // Select 4-5 exercises for the day
             $day_exercises = [];
@@ -180,7 +183,7 @@ try {
             }
             
             $weekly_plan[$week_key][$day_name] = $day_exercises;
-            $current_day++;
+            $workout_day_counter++; // Only increment for workout days
         }
     }
 
