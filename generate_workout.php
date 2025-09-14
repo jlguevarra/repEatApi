@@ -1,21 +1,16 @@
 <?php
-// Turn off all error reporting to prevent any output before headers
 error_reporting(0);
 
-// Set headers first to prevent any previous output
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST");
 header("Access-Control-Allow-Headers: Content-Type");
 
-// Initialize response array
 $response = ["success" => false, "message" => "Unknown error"];
 
 try {
-    // Include database connection
     include 'db_connection.php';
-    
-    // Check if user_id is provided
+
     if (!isset($_POST['user_id']) || empty($_POST['user_id'])) {
         $response["message"] = "User ID is required";
         echo json_encode($response);
@@ -24,40 +19,38 @@ try {
 
     $user_id = $_POST['user_id'];
 
-    // Check if user already has a workout plan
     $check_sql = "SELECT id FROM user_workout_plans WHERE user_id = ?";
     $check_stmt = $conn->prepare($check_sql);
     $check_stmt->bind_param("i", $user_id);
     $check_stmt->execute();
     $check_result = $check_stmt->get_result();
-    
+
     if ($check_result->num_rows > 0) {
         $response["message"] = "User already has a workout plan";
         $response["has_plan"] = true;
         echo json_encode($response);
         exit;
     }
-    
+
     $check_stmt->close();
 
-    // Fetch user's goal from onboarding_data table
     $sql = "SELECT goal FROM onboarding_data WHERE user_id = ? ORDER BY id DESC LIMIT 1";
     $stmt = $conn->prepare($sql);
-    
+
     if (!$stmt) {
         $response["message"] = "Database error: " . $conn->error;
         echo json_encode($response);
         exit;
     }
-    
+
     $stmt->bind_param("i", $user_id);
-    
+
     if (!$stmt->execute()) {
         $response["message"] = "Execution error: " . $stmt->error;
         echo json_encode($response);
         exit;
     }
-    
+
     $result = $stmt->get_result();
 
     if ($result->num_rows === 0) {
@@ -68,16 +61,14 @@ try {
 
     $onboarding_data = $result->fetch_assoc();
     $goal = strtolower(trim($onboarding_data['goal']));
-    
-    // Handle different variations of goal values
+
     $goal_mappings = [
         "weight_loss" => ["weight loss", "lose weight", "weightloss", "fat loss", "slim down"],
         "muscle_gain" => ["muscle gain", "gain muscle", "build muscle", "musclegrowth", "bulk up"]
     ];
-    
-    // Determine the correct goal category
-    $detected_goal = "muscle_gain"; // Default
-    
+
+    $detected_goal = "muscle_gain";
+
     foreach ($goal_mappings as $category => $variations) {
         foreach ($variations as $variation) {
             if (strpos($goal, $variation) !== false) {
@@ -86,133 +77,137 @@ try {
             }
         }
     }
-    
-    // Use the detected goal
+
     $goal = $detected_goal;
 
-    // Define workout parameters based on goal
     $workout_params = [
         "weight_loss" => [
             "sets" => 3,
             "reps" => 12,
-            "rest_days" => 2,
-            "workout_days" => 5
+            "rest_days_count" => 2, // 2 rest days per week for weight loss
         ],
         "muscle_gain" => [
             "sets" => 4,
             "reps" => 8,
-            "rest_days" => 1,
-            "workout_days" => 6
+            "rest_days_count" => 2, // 2 rest days per week for muscle gain
         ]
     ];
 
     $sets = $workout_params[$goal]["sets"];
     $reps = $workout_params[$goal]["reps"];
-    $rest_days = $workout_params[$goal]["rest_days"];
-    $workout_days = $workout_params[$goal]["workout_days"];
+    $rest_days_count = $workout_params[$goal]["rest_days_count"];
 
-    // Define dumbbell exercises by category
     $exercises = [
         "push" => [
-            "Dumbbell Bench Press",
-            "Dumbbell Shoulder Press",
-            "Dumbbell Flyes",
-            "Dumbbell Triceps Extension",
-            "Dumbbell Pullover"
+            "Dumbbell Bench Press", "Dumbbell Shoulder Press", "Dumbbell Flyes",
+            "Dumbbell Triceps Extension", "Dumbbell Pullover"
         ],
         "pull" => [
-            "Dumbbell Rows",
-            "Dumbbell Bicep Curls",
-            "Dumbbell Hammer Curls",
-            "Dumbbell Shrugs",
-            "Dumbbell Reverse Flyes"
+            "Dumbbell Rows", "Dumbbell Bicep Curls", "Dumbbell Hammer Curls",
+            "Dumbbell Shrugs", "Dumbbell Reverse Flyes"
         ],
         "legs" => [
-            "Dumbbell Squats",
-            "Dumbbell Lunges",
-            "Dumbbell Deadlifts",
-            "Dumbbell Calf Raises",
-            "Dumbbell Step-ups"
+            "Dumbbell Squats", "Dumbbell Lunges", "Dumbbell Deadlifts",
+            "Dumbbell Calf Raises", "Dumbbell Step-ups"
         ],
         "core" => [
-            "Dumbbell Russian Twists",
-            "Dumbbell Side Bends",
-            "Dumbbell Wood Chops",
-            "Dumbbell Sit-ups",
-            "Dumbbell Windmills"
+            "Dumbbell Russian Twists", "Dumbbell Side Bends", "Dumbbell Wood Chops",
+            "Dumbbell Sit-ups", "Dumbbell Windmills"
         ]
     ];
 
-    // Generate 4-week (28-day) workout plan
     $weekly_plan = [];
-    $workout_day_counter = 1; // Counter for workout days only (excluding rest days)
+    $workout_day_counter = 1;
     $workout_types = ["push", "pull", "legs", "core"];
+
+    // Seed the random number generator for consistent results per user
+    mt_srand(crc32($user_id));
 
     for ($week = 1; $week <= 4; $week++) {
         $week_key = "Week $week";
         $weekly_plan[$week_key] = [];
+
+        // Generate random rest days for this week (2 rest days, Day 1 cannot be a rest day)
+        $rest_days = [];
+        $days = range(2, 7); // Start from day 2 to exclude day 1
         
-        // Define all days of the week in correct order
-        $days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-        
-        foreach ($days_of_week as $day_name) {
-            // For weight loss: rest on Thursday and Sunday
-            if ($goal == "weight_loss" && ($day_name == "Thursday" || $day_name == "Sunday")) {
-                $weekly_plan[$week_key][$day_name] = ["Rest Day"];
-                continue;
-            } 
-            // For muscle gain: rest only on Thursday
-            elseif ($goal == "muscle_gain" && $day_name == "Thursday") {
-                $weekly_plan[$week_key][$day_name] = ["Rest Day"];
-                continue;
+        do {
+            $rest_days = [];
+            $available_days = range(2, 7); // Days 2-7 only (Day 1 is excluded)
+            
+            // Select random rest days
+            $random_indices = array_rand($available_days, $rest_days_count);
+            
+            // If only one rest day, convert to array
+            if ($rest_days_count == 1) {
+                $rest_days[] = $available_days[$random_indices];
+            } else {
+                foreach ($random_indices as $index) {
+                    $rest_days[] = $available_days[$index];
+                }
             }
             
-            // Select workout type in rotation (only count workout days)
-            $workout_type = $workout_types[($workout_day_counter - 1) % 4];
+            sort($rest_days);
             
-            // Select 4-5 exercises for the day
+            // Check for consecutive rest days
+            $has_consecutive = false;
+            for ($i = 0; $i < count($rest_days) - 1; $i++) {
+                if ($rest_days[$i + 1] - $rest_days[$i] === 1) {
+                    $has_consecutive = true;
+                    break;
+                }
+            }
+        } while ($has_consecutive);
+
+        for ($day = 1; $day <= 7; $day++) {
+            $day_label = "Day $day";
+
+            if (in_array($day, $rest_days)) {
+                $weekly_plan[$week_key][$day_label] = ["Rest Day"];
+                continue;
+            }
+
+            $workout_type = $workout_types[($workout_day_counter - 1) % 4];
             $day_exercises = [];
             $available_exercises = $exercises[$workout_type];
             shuffle($available_exercises);
-            
+
             $exercise_count = ($goal == "weight_loss") ? 4 : 5;
             for ($i = 0; $i < $exercise_count; $i++) {
                 if (isset($available_exercises[$i])) {
                     $day_exercises[] = $available_exercises[$i];
                 }
             }
-            
-            $weekly_plan[$week_key][$day_name] = $day_exercises;
-            $workout_day_counter++; // Only increment for workout days
+
+            $weekly_plan[$week_key][$day_label] = $day_exercises;
+            $workout_day_counter++;
         }
     }
 
-    // Save the workout plan to database
     $plan_data = json_encode([
         "weekly_plan" => $weekly_plan,
         "generated_at" => date("Y-m-d H:i:s")
     ]);
-    
+
     $insert_sql = "INSERT INTO user_workout_plans (user_id, goal, sets, reps, plan_data) VALUES (?, ?, ?, ?, ?)";
     $insert_stmt = $conn->prepare($insert_sql);
-    
+
     if (!$insert_stmt) {
         $response["message"] = "Database error: " . $conn->error;
         echo json_encode($response);
         exit;
     }
-    
+
     $insert_stmt->bind_param("isiis", $user_id, $goal, $sets, $reps, $plan_data);
-    
+
     if (!$insert_stmt->execute()) {
         $response["message"] = "Failed to save workout plan: " . $insert_stmt->error;
         echo json_encode($response);
         exit;
     }
-    
+
     $insert_stmt->close();
 
-    // Prepare success response
     $response = [
         "success" => true,
         "goal" => $goal,
@@ -226,10 +221,8 @@ try {
     $response["message"] = "Exception: " . $e->getMessage();
 }
 
-// Ensure only JSON is output
 echo json_encode($response);
 
-// Close connections if they exist
 if (isset($stmt)) {
     $stmt->close();
 }
