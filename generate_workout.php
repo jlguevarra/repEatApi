@@ -84,12 +84,12 @@ try {
         "weight_loss" => [
             "sets" => 3,
             "reps" => 12,
-            "rest_days_count" => 2, // 2 rest days per week for weight loss
+            "rest_days_count" => 2
         ],
         "muscle_gain" => [
             "sets" => 4,
             "reps" => 8,
-            "rest_days_count" => 2, // 2 rest days per week for muscle gain
+            "rest_days_count" => 1
         ]
     ];
 
@@ -120,36 +120,28 @@ try {
     $workout_day_counter = 1;
     $workout_types = ["push", "pull", "legs", "core"];
 
-    // Seed the random number generator for consistent results per user
-    mt_srand(crc32($user_id));
+    mt_srand(crc32($user_id)); // Seed for consistent generation
 
     for ($week = 1; $week <= 4; $week++) {
         $week_key = "Week $week";
         $weekly_plan[$week_key] = [];
 
-        // Generate random rest days for this week (2 rest days, Day 1 cannot be a rest day)
-        $rest_days = [];
-        $days = range(2, 7); // Start from day 2 to exclude day 1
-        
+        $available_days = range(2, 7); // Day 1 is always active
+
         do {
             $rest_days = [];
-            $available_days = range(2, 7); // Days 2-7 only (Day 1 is excluded)
-            
-            // Select random rest days
-            $random_indices = array_rand($available_days, $rest_days_count);
-            
-            // If only one rest day, convert to array
+
             if ($rest_days_count == 1) {
-                $rest_days[] = $available_days[$random_indices];
+                $rest_days[] = $available_days[array_rand($available_days)];
             } else {
-                foreach ($random_indices as $index) {
+                $random_indices = array_rand($available_days, $rest_days_count);
+                foreach ((array) $random_indices as $index) {
                     $rest_days[] = $available_days[$index];
                 }
             }
-            
+
             sort($rest_days);
-            
-            // Check for consecutive rest days
+
             $has_consecutive = false;
             for ($i = 0; $i < count($rest_days) - 1; $i++) {
                 if ($rest_days[$i + 1] - $rest_days[$i] === 1) {
@@ -157,7 +149,7 @@ try {
                     break;
                 }
             }
-        } while ($has_consecutive);
+        } while ($has_consecutive && $rest_days_count > 1);
 
         for ($day = 1; $day <= 7; $day++) {
             $day_label = "Day $day";
@@ -168,16 +160,11 @@ try {
             }
 
             $workout_type = $workout_types[($workout_day_counter - 1) % 4];
-            $day_exercises = [];
             $available_exercises = $exercises[$workout_type];
             shuffle($available_exercises);
 
             $exercise_count = ($goal == "weight_loss") ? 4 : 5;
-            for ($i = 0; $i < $exercise_count; $i++) {
-                if (isset($available_exercises[$i])) {
-                    $day_exercises[] = $available_exercises[$i];
-                }
-            }
+            $day_exercises = array_slice($available_exercises, 0, $exercise_count);
 
             $weekly_plan[$week_key][$day_label] = $day_exercises;
             $workout_day_counter++;
