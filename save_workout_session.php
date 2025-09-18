@@ -14,6 +14,7 @@ $completed_reps = $data['completed_reps'] ?? 0;
 $target_reps = $data['target_reps'] ?? 0;
 $duration_seconds = $data['duration_seconds'] ?? 0;
 $date = $data['date'] ?? date('Y-m-d');
+$plan_day = $data['plan_day'] ?? ''; // NEW: Get plan_day from request
 
 if (empty($user_id) || empty($exercise)) {
     echo json_encode(["success" => false, "message" => "User ID and exercise are required"]);
@@ -21,8 +22,9 @@ if (empty($user_id) || empty($exercise)) {
 }
 
 try {
-    $stmt = $conn->prepare("INSERT INTO workout_sessions (user_id, exercise_name, completed_reps, target_reps, duration_seconds, date) VALUES (?, ?, ?, ?, ?, ?)");
-    $stmt->bind_param("isiiis", $user_id, $exercise, $completed_reps, $target_reps, $duration_seconds, $date);
+    // Updated SQL to include plan_day
+    $stmt = $conn->prepare("INSERT INTO workout_sessions (user_id, plan_day, exercise_name, completed_reps, target_reps, duration_seconds, date) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("issiiis", $user_id, $plan_day, $exercise, $completed_reps, $target_reps, $duration_seconds, $date);
     
     if ($stmt->execute()) {
         echo json_encode(["success" => true, "message" => "Workout session saved successfully"]);

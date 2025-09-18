@@ -82,21 +82,49 @@ if ($row) {
     $dayKey = "Day " . ($currentDayIndex + 1);
 
     // Calculate weekly goal based on workout days (non-rest days)
-    if (isset($planData['weekly_plan'][$weekKey])) {
-        $weeklyGoal = 0;
-        foreach ($planData['weekly_plan'][$weekKey] as $dayLabel => $exercises) {
-            $isRestDay = is_array($exercises) && count($exercises) === 1 && $exercises[0] === "Rest Day";
-            if (!$isRestDay) {
-                $weeklyGoal++; // Count non-rest days as workout days
-            }
-            
-            $weeklyActivity[] = [
-                "day" => $dayLabel,
-                "isRestDay" => $isRestDay,
-                "exercises" => $isRestDay ? [] : $exercises
-            ];
+    // In your dashboard.php file:
+
+if (isset($planData['weekly_plan'][$weekKey])) {
+    $weeklyGoal = 0;
+    $dayCounter = 0;
+    
+    foreach ($planData['weekly_plan'][$weekKey] as $dayLabel => $exercises) {
+        $isRestDay = is_array($exercises) && count($exercises) === 1 && $exercises[0] === "Rest Day";
+        if (!$isRestDay) {
+            $weeklyGoal++;
         }
+        
+        $isActive = ($dayCounter === $currentDayIndex);
+        $isCompleted = false;
+        
+        if (!$isRestDay) {
+            // Check if this specific plan day was completed
+            $planDayIdentifier = "Week " . ($currentWeekIndex + 1) . " - " . $dayLabel;
+            
+            $completionCheckSql = "SELECT COUNT(*) as count FROM workout_sessions 
+                                  WHERE user_id = $user_id 
+                                  AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
+            
+            $completionResult = $conn->query($completionCheckSql);
+            $completionRow = $completionResult ? $completionResult->fetch_assoc() : null;
+            
+            $isCompleted = ($completionRow && intval($completionRow['count']) > 0);
+        } else {
+            // Rest days are automatically considered completed
+            $isCompleted = true;
+        }
+        
+        $weeklyActivity[] = [
+            "day" => $dayLabel,
+            "isRestDay" => $isRestDay,
+            "exercises" => $isRestDay ? [] : $exercises,
+            "isActive" => $isActive,
+            "isCompleted" => $isCompleted
+        ];
+        
+        $dayCounter++;
     }
+}
 
     // Show today's workout in upcomingWorkouts
     if (isset($planData['weekly_plan'][$weekKey][$dayKey])) {
@@ -110,6 +138,19 @@ if ($row) {
             ];
         }
     }
+}
+
+// If no plan data found, create a default weekly activity
+if (empty($weeklyActivity)) {
+    $weeklyActivity = [
+        ["day" => "Day 1", "isRestDay" => false, "exercises" => [], "isActive" => false],
+        ["day" => "Day 2", "isRestDay" => false, "exercises" => [], "isActive" => false],
+        ["day" => "Day 3", "isRestDay" => false, "exercises" => [], "isActive" => false],
+        ["day" => "Day 4", "isRestDay" => true, "exercises" => [], "isActive" => false],
+        ["day" => "Day 5", "isRestDay" => false, "exercises" => [], "isActive" => false],
+        ["day" => "Day 6", "isRestDay" => false, "exercises" => [], "isActive" => false],
+        ["day" => "Day 7", "isRestDay" => true, "exercises" => [], "isActive" => false]
+    ];
 }
 
 // ✅ Final JSON
