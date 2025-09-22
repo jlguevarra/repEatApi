@@ -1,58 +1,44 @@
 <?php
-error_reporting(0);
-
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 header("Content-Type: application/json");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type");
+include 'db_connection.php';
 
-$response = ["success" => false, "message" => "Unknown error"];
+if (!isset($_POST['user_id']) || !isset($_POST['current_week_index']) || !isset($_POST['current_day_index'])) {
+    echo json_encode(["success" => false, "message" => "Required parameters are missing."]);
+    exit;
+}
+
+$user_id = $_POST['user_id'];
+$current_week_index = (int)$_POST['current_week_index'];
+$current_day_index = (int)$_POST['current_day_index'];
 
 try {
-    include 'db_connection.php';
-
-    if (!isset($_POST['user_id']) || empty($_POST['user_id'])) {
-        $response["message"] = "User ID is required";
-        echo json_encode($response);
-        exit;
-    }
-
-    $user_id = $_POST['user_id'];
-    $current_week_index = isset($_POST['current_week_index']) ? (int)$_POST['current_week_index'] : 0;
-    $current_day_index = isset($_POST['current_day_index']) ? (int)$_POST['current_day_index'] : 0;
-    $completed_today = isset($_POST['completed_today']) ? (bool)$_POST['completed_today'] : false;
-
-    $sql = "UPDATE user_workout_plans 
-            SET current_week_index = ?, current_day_index = ?, completed_today = ?, last_updated = CURRENT_TIMESTAMP
-            WHERE user_id = ?";
-    $stmt = $conn->prepare($sql);
-
-    if (!$stmt) {
-        $response["message"] = "Database error: " . $conn->error;
-        echo json_encode($response);
-        exit;
-    }
-
-    $stmt->bind_param("iiii", $current_week_index, $current_day_index, $completed_today, $user_id);
-
+    // This query correctly targets the user_workout_plans table
+    $stmt = $conn->prepare("
+        UPDATE user_workout_plans 
+        SET current_week_index = ?, current_day_index = ?
+        WHERE user_id = ?
+    ");
+    
+    $stmt->bind_param("iii", $current_week_index, $current_day_index, $user_id);
+    
     if ($stmt->execute()) {
-        $response["success"] = true;
-        $response["message"] = "Workout progress updated successfully";
+        if ($stmt->affected_rows > 0) {
+            echo json_encode(["success" => true, "message" => "Workout progress updated successfully."]);
+        } else {
+            echo json_encode(["success" => false, "message" => "No plan found for the user to update."]);
+        }
     } else {
-        $response["message"] = "Failed to update workout progress: " . $stmt->error;
+        echo json_encode(["success" => false, "message" => "Failed to execute update."]);
     }
-
+    
     $stmt->close();
 
 } catch (Exception $e) {
-    $response["message"] = "Exception: " . $e->getMessage();
+    echo json_encode(["success" => false, "message" => "An exception occurred: " . $e->getMessage()]);
 }
 
-echo json_encode($response);
-
-if (isset($conn)) {
-    $conn->close();
-}
-exit;
+$conn->close();
 ?>
