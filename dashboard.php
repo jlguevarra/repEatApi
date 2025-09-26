@@ -16,12 +16,11 @@ $result = $conn->query($sql);
 $row = $result ? $result->fetch_assoc() : null;
 $workoutsCompleted = $row ? intval($row['total']) : 0;
 
-// 2️⃣ Calories Burned
-$sql = "SELECT SUM(completed_reps) as total_reps FROM workout_sessions WHERE user_id = $user_id";
+// 2️⃣ Calories Burned (all time)
+$sql = "SELECT SUM(calories_burned) as total_calories FROM workout_sessions WHERE user_id = $user_id";
 $result = $conn->query($sql);
 $row = $result ? $result->fetch_assoc() : null;
-$totalReps = $row && $row['total_reps'] ? intval($row['total_reps']) : 0;
-$caloriesBurned = $totalReps * 5;
+$caloriesBurned = $row && $row['total_calories'] ? intval($row['total_calories']) : 0;
 
 // 3️⃣ Streak Days
 $sql = "SELECT DISTINCT date FROM workout_sessions WHERE user_id = $user_id ORDER BY date DESC";
@@ -33,14 +32,29 @@ if ($result) {
     }
 }
 $streakDays = 0;
-$today = new DateTime();
-foreach ($dates as $d) {
-    $dateObj = new DateTime($d);
-    $diff = $today->diff($dateObj)->days;
-    if ($diff == $streakDays) {
-        $streakDays++;
-    } else {
-        break;
+if (!empty($dates)) {
+    $today = new DateTime();
+    $today->setTime(0, 0, 0); 
+
+    $lastWorkoutDate = new DateTime($dates[0]);
+    $lastWorkoutDate->setTime(0, 0, 0);
+    $diff = $today->diff($lastWorkoutDate)->days;
+
+    if ($diff <= 1) { 
+        $streakDays = 1;
+        $expectedDate = clone $lastWorkoutDate;
+        $expectedDate->modify('-1 day');
+
+        for ($i = 1; $i < count($dates); $i++) {
+            $currentDate = new DateTime($dates[$i]);
+            $currentDate->setTime(0, 0, 0);
+            if ($currentDate == $expectedDate) {
+                $streakDays++;
+                $expectedDate->modify('-1 day');
+            } else {
+                break;
+            }
+        }
     }
 }
 
@@ -52,14 +66,13 @@ $weight = ($row && isset($row['current_weight'])) ? floatval($row['current_weigh
 
 // 5️⃣ Workouts This Week
 $weekStart = date('Y-m-d', strtotime('monday this week'));
-$sql = "SELECT COUNT(*) as total FROM workout_sessions WHERE user_id = $user_id AND date >= '$weekStart'";
+$sql = "SELECT COUNT(DISTINCT plan_day) as total FROM workout_sessions WHERE user_id = $user_id AND date >= '$weekStart'";
 $result = $conn->query($sql);
 $row = $result ? $result->fetch_assoc() : null;
 $workoutsThisWeek = $row ? intval($row['total']) : 0;
 
 // 6️⃣ Weekly Goal and Activity
-$sql = "SELECT plan_data, current_week_index, current_day_index, completed_today 
-        FROM user_workout_plans 
+$sql = "SELECT plan_data, current_week_index, current_day_index FROM user_workout_plans 
         WHERE user_id = $user_id 
         ORDER BY created_at DESC 
         LIMIT 1";
@@ -76,81 +89,95 @@ if ($row) {
 
     $currentWeekIndex = intval($row['current_week_index']);
     $currentDayIndex = intval($row['current_day_index']);
-    $completedToday = intval($row['completed_today']) === 1;
 
     $weekKey = "Week " . ($currentWeekIndex + 1);
     $dayKey = "Day " . ($currentDayIndex + 1);
 
-    // Calculate weekly goal based on workout days (non-rest days)
-    // In your dashboard.php file:
-
-if (isset($planData['weekly_plan'][$weekKey])) {
-    $weeklyGoal = 0;
-    $dayCounter = 0;
-    
-    foreach ($planData['weekly_plan'][$weekKey] as $dayLabel => $exercises) {
-        $isRestDay = is_array($exercises) && count($exercises) === 1 && $exercises[0] === "Rest Day";
-        if (!$isRestDay) {
-            $weeklyGoal++;
-        }
+    if (isset($planData['weekly_plan'][$weekKey])) {
+        $weeklyGoal = 0;
+        $dayCounter = 0;
         
-        $isActive = ($dayCounter === $currentDayIndex);
-        $isCompleted = false;
-        
-        if (!$isRestDay) {
-            // Check if this specific plan day was completed
+        foreach ($planData['weekly_plan'][$weekKey] as $dayLabel => $exercises) {
+            $isRestDay = is_array($exercises) && count($exercises) === 1 && $exercises[0] === "Rest Day";
+            if (!$isRestDay) {
+                $weeklyGoal++;
+            }
+            
+            $isActive = ($dayCounter === $currentDayIndex);
+            
             $planDayIdentifier = "Week " . ($currentWeekIndex + 1) . " - " . $dayLabel;
-            
             $completionCheckSql = "SELECT COUNT(*) as count FROM workout_sessions 
-                                  WHERE user_id = $user_id 
-                                  AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
-            
+                                   WHERE user_id = $user_id 
+                                   AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
             $completionResult = $conn->query($completionCheckSql);
             $completionRow = $completionResult ? $completionResult->fetch_assoc() : null;
-            
             $isCompleted = ($completionRow && intval($completionRow['count']) > 0);
-        } else {
-            // Rest days are automatically considered completed
-            $isCompleted = true;
+            
+            $weeklyActivity[] = [
+                "day" => substr($dayLabel, 0, 3), 
+                "isRestDay" => $isRestDay,
+                "exercises" => $isRestDay ? [] : $exercises,
+                "isActive" => $isActive,
+                "isCompleted" => $isCompleted
+            ];
+            
+            $dayCounter++;
         }
-        
-        $weeklyActivity[] = [
-            "day" => $dayLabel,
-            "isRestDay" => $isRestDay,
-            "exercises" => $isRestDay ? [] : $exercises,
-            "isActive" => $isActive,
-            "isCompleted" => $isCompleted
-        ];
-        
-        $dayCounter++;
     }
-}
 
-    // Show today's workout in upcomingWorkouts
+    // MODIFIED: Upcoming Workouts Logic
     if (isset($planData['weekly_plan'][$weekKey][$dayKey])) {
         $todayExercises = $planData['weekly_plan'][$weekKey][$dayKey];
         $isRestDay = is_array($todayExercises) && count($todayExercises) === 1 && $todayExercises[0] === "Rest Day";
         
-        if (!$isRestDay) {
+        if ($isRestDay) {
+            // If today is a rest day, send a specific message.
             $upcomingWorkouts[] = [
-                "title" => $todayExercises,
+                "title" => ["It is a rest day"],
                 "time" => "today"
             ];
+        } else {
+            // It's a workout day. Check if ALL exercises are completed.
+            $planDayIdentifier = "Week " . ($currentWeekIndex + 1) . " - " . $dayKey;
+            
+            // 1. Get the count of planned exercises
+            $totalPlannedCount = count($todayExercises);
+
+            // 2. Get the count of distinct completed exercises for today
+            $completedSql = "SELECT COUNT(DISTINCT exercise_name) as count 
+                             FROM workout_sessions 
+                             WHERE user_id = $user_id 
+                             AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
+            $completedResult = $conn->query($completedSql);
+            $completedRow = $completedResult ? $completedResult->fetch_assoc() : null;
+            $totalCompletedCount = $completedRow ? intval($completedRow['count']) : 0;
+
+            // 3. Only if planned exercises are more than completed, show the list
+            if ($totalCompletedCount < $totalPlannedCount) {
+                $upcomingWorkouts[] = [
+                    "title" => $todayExercises,
+                    "time" => "today"
+                ];
+            }
         }
     }
 }
 
+
 // If no plan data found, create a default weekly activity
 if (empty($weeklyActivity)) {
-    $weeklyActivity = [
-        ["day" => "Day 1", "isRestDay" => false, "exercises" => [], "isActive" => false],
-        ["day" => "Day 2", "isRestDay" => false, "exercises" => [], "isActive" => false],
-        ["day" => "Day 3", "isRestDay" => false, "exercises" => [], "isActive" => false],
-        ["day" => "Day 4", "isRestDay" => true, "exercises" => [], "isActive" => false],
-        ["day" => "Day 5", "isRestDay" => false, "exercises" => [], "isActive" => false],
-        ["day" => "Day 6", "isRestDay" => false, "exercises" => [], "isActive" => false],
-        ["day" => "Day 7", "isRestDay" => true, "exercises" => [], "isActive" => false]
-    ];
+    $days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    $todayIndex = date('N') - 1; 
+
+    for ($i = 0; $i < 7; $i++) {
+        $weeklyActivity[] = [
+            "day" => $days[$i], 
+            "isRestDay" => ($i == 3 || $i == 6), 
+            "exercises" => [], 
+            "isActive" => ($i === $todayIndex),
+            "isCompleted" => false
+        ];
+    }
 }
 
 // ✅ Final JSON
@@ -167,3 +194,4 @@ echo json_encode([
 
 $conn->close();
 ?>
+
