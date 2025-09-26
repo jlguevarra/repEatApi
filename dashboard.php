@@ -64,14 +64,11 @@ $result = $conn->query($sql);
 $row = $result ? $result->fetch_assoc() : null;
 $weight = ($row && isset($row['current_weight'])) ? floatval($row['current_weight']) : 0;
 
-// 5️⃣ Workouts This Week
-$weekStart = date('Y-m-d', strtotime('monday this week'));
-$sql = "SELECT COUNT(DISTINCT plan_day) as total FROM workout_sessions WHERE user_id = $user_id AND date >= '$weekStart'";
-$result = $conn->query($sql);
-$row = $result ? $result->fetch_assoc() : null;
-$workoutsThisWeek = $row ? intval($row['total']) : 0;
+// Initialize progress variables with default values
+$workoutsThisWeek = 0; // Will represent completed days in the 4-week plan
+$weeklyGoal = 28;     // Will represent total days in the 4-week plan
 
-// 6️⃣ Weekly Goal and Activity
+// 5️⃣ & 6️⃣ - Weekly Goal, Activity, and Plan Progress
 $sql = "SELECT plan_data, current_week_index, current_day_index FROM user_workout_plans 
         WHERE user_id = $user_id 
         ORDER BY created_at DESC 
@@ -79,7 +76,6 @@ $sql = "SELECT plan_data, current_week_index, current_day_index FROM user_workou
 $result = $conn->query($sql);
 $row = $result ? $result->fetch_assoc() : null;
 
-$weeklyGoal = 5; // Default value
 $weeklyActivity = [];
 $upcomingWorkouts = [];
 
@@ -90,93 +86,67 @@ if ($row) {
     $currentWeekIndex = intval($row['current_week_index']);
     $currentDayIndex = intval($row['current_day_index']);
 
+    // --- MODIFIED: 4-WEEK PLAN PROGRESS CALCULATION ---
+    // The numerator is the total number of days passed in the plan.
+    // (e.g., Week 1, Day 2 -> index 0, index 1 -> (0 * 7) + (1 + 1) = 2 days passed)
+    $workoutsThisWeek = ($currentWeekIndex * 7) + ($currentDayIndex + 1);
+    // The denominator is the total days in the 4-week plan.
+    $weeklyGoal = 28;
+    // --- END MODIFICATION ---
+
     $weekKey = "Week " . ($currentWeekIndex + 1);
     $dayKey = "Day " . ($currentDayIndex + 1);
 
     if (isset($planData['weekly_plan'][$weekKey])) {
-        $weeklyGoal = 0;
         $dayCounter = 0;
-        
         foreach ($planData['weekly_plan'][$weekKey] as $dayLabel => $exercises) {
             $isRestDay = is_array($exercises) && count($exercises) === 1 && $exercises[0] === "Rest Day";
-            if (!$isRestDay) {
-                $weeklyGoal++;
-            }
-            
             $isActive = ($dayCounter === $currentDayIndex);
             
             $planDayIdentifier = "Week " . ($currentWeekIndex + 1) . " - " . $dayLabel;
-            $completionCheckSql = "SELECT COUNT(*) as count FROM workout_sessions 
-                                   WHERE user_id = $user_id 
-                                   AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
+            $completionCheckSql = "SELECT COUNT(*) as count FROM workout_sessions WHERE user_id = $user_id AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
             $completionResult = $conn->query($completionCheckSql);
             $completionRow = $completionResult ? $completionResult->fetch_assoc() : null;
             $isCompleted = ($completionRow && intval($completionRow['count']) > 0);
             
             $weeklyActivity[] = [
-                "day" => substr($dayLabel, 0, 3), 
+                "day" => substr($dayLabel, 0, 3),
                 "isRestDay" => $isRestDay,
                 "exercises" => $isRestDay ? [] : $exercises,
                 "isActive" => $isActive,
                 "isCompleted" => $isCompleted
             ];
-            
             $dayCounter++;
         }
     }
 
-    // MODIFIED: Upcoming Workouts Logic
     if (isset($planData['weekly_plan'][$weekKey][$dayKey])) {
         $todayExercises = $planData['weekly_plan'][$weekKey][$dayKey];
         $isRestDay = is_array($todayExercises) && count($todayExercises) === 1 && $todayExercises[0] === "Rest Day";
         
         if ($isRestDay) {
-            // If today is a rest day, send a specific message.
-            $upcomingWorkouts[] = [
-                "title" => ["It is a rest day"],
-                "time" => "today"
-            ];
+            $upcomingWorkouts[] = ["title" => ["It is a rest day"], "time" => "today"];
         } else {
-            // It's a workout day. Check if ALL exercises are completed.
             $planDayIdentifier = "Week " . ($currentWeekIndex + 1) . " - " . $dayKey;
-            
-            // 1. Get the count of planned exercises
             $totalPlannedCount = count($todayExercises);
-
-            // 2. Get the count of distinct completed exercises for today
-            $completedSql = "SELECT COUNT(DISTINCT exercise_name) as count 
-                             FROM workout_sessions 
-                             WHERE user_id = $user_id 
-                             AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
+            $completedSql = "SELECT COUNT(DISTINCT exercise_name) as count FROM workout_sessions WHERE user_id = $user_id AND plan_day = '" . $conn->real_escape_string($planDayIdentifier) . "'";
             $completedResult = $conn->query($completedSql);
             $completedRow = $completedResult ? $completedResult->fetch_assoc() : null;
             $totalCompletedCount = $completedRow ? intval($completedRow['count']) : 0;
 
-            // 3. Only if planned exercises are more than completed, show the list
             if ($totalCompletedCount < $totalPlannedCount) {
-                $upcomingWorkouts[] = [
-                    "title" => $todayExercises,
-                    "time" => "today"
-                ];
+                $upcomingWorkouts[] = ["title" => $todayExercises, "time" => "today"];
             }
         }
     }
-}
-
-
-// If no plan data found, create a default weekly activity
-if (empty($weeklyActivity)) {
+} else {
+    // If no plan, set progress to 0 and create default activity
+    $workoutsThisWeek = 0; 
+    $weeklyGoal = 28;
     $days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    $todayIndex = date('N') - 1; 
-
+    $todayIndex = date('N') - 1;
     for ($i = 0; $i < 7; $i++) {
-        $weeklyActivity[] = [
-            "day" => $days[$i], 
-            "isRestDay" => ($i == 3 || $i == 6), 
-            "exercises" => [], 
-            "isActive" => ($i === $todayIndex),
-            "isCompleted" => false
-        ];
+        $weeklyActivity[] = ["day" => $days[$i], "isRestDay" => ($i == 3 || $i == 6), "exercises" => [], "isActive" => ($i === $todayIndex), "isCompleted" => false];
     }
 }
 
@@ -186,12 +156,11 @@ echo json_encode([
     "caloriesBurned" => $caloriesBurned,
     "streakDays" => $streakDays,
     "weight" => $weight,
-    "workoutsThisWeek" => $workoutsThisWeek,
-    "weeklyGoal" => $weeklyGoal,
+    "workoutsThisWeek" => $workoutsThisWeek, // Now represents days completed in the 4-week plan
+    "weeklyGoal" => $weeklyGoal,             // Now represents total days in the 4-week plan (28)
     "weeklyActivity" => $weeklyActivity,
     "upcomingWorkouts" => $upcomingWorkouts
 ]);
 
 $conn->close();
 ?>
-
