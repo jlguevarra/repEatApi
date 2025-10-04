@@ -44,12 +44,12 @@ try {
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'banknorthland@gmail.com';     // Your Gmail
-    $mail->Password   = 'fkqz ajze pczf nmgl';         // App Password
+    $mail->Username   = 'orbidayuri4@gmail.com';     // Your Gmail
+    $mail->Password   = 'mzlz goju znzd mqqh';         // App Password
     $mail->SMTPSecure = 'tls';
     $mail->Port       = 587;
 
-    $mail->setFrom('yourgmail@gmail.com', 'RepEat Support');
+    $mail->setFrom('orbidayuri4@gmail.com', 'RepEat Support');
     $mail->addAddress($email);
 
     $mail->isHTML(true);

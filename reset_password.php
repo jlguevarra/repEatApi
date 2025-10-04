@@ -16,7 +16,7 @@ if (empty($email) || empty($code) || empty($newPassword)) {
     exit;
 }
 
-// Check code is valid and not used
+// Check if the code is valid and not used
 $stmt = $conn->prepare("SELECT * FROM password_resets WHERE email = ? AND code = ? AND used = 0 ORDER BY created_at DESC LIMIT 1");
 $stmt->bind_param("ss", $email, $code);
 $stmt->execute();
@@ -27,7 +27,24 @@ if ($result->num_rows === 0) {
     exit;
 }
 
-// Update password
+// ### MODIFICATION START ###
+// Get the user's current password to check for duplicates
+$userStmt = $conn->prepare("SELECT password FROM users WHERE email = ?");
+$userStmt->bind_param("s", $email);
+$userStmt->execute();
+$userResult = $userStmt->get_result();
+$user = $userResult->fetch_assoc();
+$currentHashedPassword = $user['password'];
+
+// Compare the new password with the current hashed password
+if (password_verify($newPassword, $currentHashedPassword)) {
+    echo json_encode(["success" => false, "message" => "New password cannot be the same as your current password."]);
+    exit;
+}
+// ### MODIFICATION END ###
+
+
+// If passwords are different, proceed to update the password
 $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
 $update = $conn->prepare("UPDATE users SET password = ? WHERE email = ?");
 $update->bind_param("ss", $hashedPassword, $email);

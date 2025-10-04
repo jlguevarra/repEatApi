@@ -42,12 +42,12 @@ try {
     $mail->isSMTP();
     $mail->Host = 'smtp.gmail.com';
     $mail->SMTPAuth = true;
-    $mail->Username = 'banknorthland@gmail.com';
-    $mail->Password = 'fkqz ajze pczf nmgl'; // App Password
+    $mail->Username = 'orbidayuri4@gmail.com';
+    $mail->Password = 'mzlz goju znzd mqqh'; // App Password
     $mail->SMTPSecure = 'tls';
     $mail->Port = 587;
 
-    $mail->setFrom('banknorthland@gmail.com', 'RepEat Verification');
+    $mail->setFrom('orbidayuri4@gmail.com', 'RepEat Verification');
     $mail->addAddress($email);
     $mail->isHTML(true);
     $mail->Subject = 'Your RepEat Verification Code';
